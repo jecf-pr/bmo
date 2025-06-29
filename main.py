@@ -136,10 +136,11 @@ def respond():
         print("📥 Cabeçalhos recebidos:", request.headers)
         print("📦 Corpo bruto:", request.data)
 
-        msg = ''
-        if request.is_json:
-            data = request.get_json()
+        try:
+            data = request.get_json(force=True)  # força parsear JSON mesmo sem header
             msg = data.get('message', '').strip()
+        except Exception:
+            msg = ''
 
         print("🧠 Mensagem recebida:", msg)
 
@@ -160,6 +161,7 @@ def respond():
         print("💥 Erro ao responder:")
         print(traceback.format_exc())
         return jsonify({"response": "Desculpa, deu erro interno."}), 500
+
 
 @app.route('/')
 def home():
