@@ -136,11 +136,16 @@ def respond():
         print("📥 Cabeçalhos recebidos:", request.headers)
         print("📦 Corpo bruto:", request.data)
 
-        try:
-            data = request.get_json(force=True)  # força o parsing mesmo sem header application/json
+        msg = ''
+
+        # Tenta extrair do JSON (application/json)
+        if request.is_json:
+            data = request.get_json()
             msg = data.get('message', '').strip()
-        except Exception:
-            msg = ''
+
+        # Tenta extrair do form (application/x-www-form-urlencoded)
+        elif 'message' in request.form:
+            msg = request.form.get('message', '').strip()
 
         print("🧠 Mensagem recebida:", msg)
 
@@ -167,7 +172,7 @@ def home():
     return "BMO está online. Envie POST para /message"
 
 if __name__ == '__main__':
+    import os
     history = load_history()
     port = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=port)
-
