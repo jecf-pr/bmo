@@ -136,7 +136,11 @@ def respond():
         print("📥 Cabeçalhos recebidos:", request.headers)
         print("📦 Corpo bruto:", request.data)
 
-        msg = request.form.get('message', '').strip()
+        msg = ''
+        if request.is_json:
+            data = request.get_json()
+            msg = data.get('message', '').strip()
+
         print("🧠 Mensagem recebida:", msg)
 
         if not msg:
@@ -163,6 +167,7 @@ def home():
 
 if __name__ == '__main__':
     import os
+    history = load_history()
     port = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=port)
 
