@@ -131,7 +131,11 @@ def generate_sentence(start_word='ansiedade', max_words=20):
 @app.route('/message', methods=['POST'])
 def respond():
     try:
-        data = request.json
+        print("📥 Cabeçalhos recebidos:", request.headers)
+        print("📦 Corpo bruto:", request.data)
+        print("📄 JSON interpretado:", request.get_json(force=True))  # força leitura como JSON
+
+        data = request.get_json(force=True)
         msg = data.get('message', '').strip()
 
         if not msg:
@@ -148,7 +152,7 @@ def respond():
         return jsonify({"response": resposta})
 
     except Exception:
-        print("Erro ao responder:")
+        print("💥 Erro ao responder:")
         print(traceback.format_exc())
         return jsonify({"response": "Desculpa, deu erro interno."}), 500
 
@@ -160,3 +164,4 @@ if __name__ == '__main__':
     history = load_history()
     port = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=port)
+
