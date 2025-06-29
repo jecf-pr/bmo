@@ -137,7 +137,7 @@ def respond():
         print("📦 Corpo bruto:", request.data)
 
         try:
-            data = request.get_json(force=True)  # força parsear JSON mesmo sem header
+            data = request.get_json(force=True)  # força o parsing mesmo sem header application/json
             msg = data.get('message', '').strip()
         except Exception:
             msg = ''
@@ -162,13 +162,11 @@ def respond():
         print(traceback.format_exc())
         return jsonify({"response": "Desculpa, deu erro interno."}), 500
 
-
 @app.route('/')
 def home():
     return "BMO está online. Envie POST para /message"
 
 if __name__ == '__main__':
-    import os
     history = load_history()
     port = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=port)
