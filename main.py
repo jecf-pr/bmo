@@ -57,32 +57,43 @@ class LSTMGenerator(nn.Module):
         return out
 
 def train_on_new_data():
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    os.makedirs(os.path.dirname(LSTM_PATH), exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(LSTM_PATH), exist_ok=True)
 
-    sentences = [msg.split() for msg in history]
-    model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, workers=4)
-    model.save(MODEL_PATH)
+        sentences = [msg.split() for msg in history if msg.strip()]
+        if not sentences:
+            return
 
-    lstm = LSTMGenerator(100, 128, 100)
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(lstm.parameters(), lr=0.001)
+        model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, workers=1)
+        model.save(MODEL_PATH)
 
-    for epoch in range(5):
-        for sentence in sentences:
-            for i in range(len(sentence)-1):
-                input_word = torch.tensor(model.wv[sentence[i]])
-                target_word = torch.tensor(model.wv[sentence[i+1]])
-                input_word = input_word.view(1, 1, -1)
-                target_word = target_word.view(1, -1)
+        lstm = LSTMGenerator(100, 128, 100)
+        criterion = nn.MSELoss()
+        optimizer = optim.Adam(lstm.parameters(), lr=0.001)
 
-                output = lstm(input_word)
-                loss = criterion(output, target_word)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+        for epoch in range(1):
+            for sentence in sentences:
+                for i in range(len(sentence) - 1):
+                    try:
+                        input_word = torch.tensor(model.wv[sentence[i]])
+                        target_word = torch.tensor(model.wv[sentence[i + 1]])
+                        input_word = input_word.view(1, 1, -1)
+                        target_word = target_word.view(1, -1)
 
-    torch.save(lstm.state_dict(), LSTM_PATH)
+                        output = lstm(input_word)
+                        loss = criterion(output, target_word)
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                    except Exception:
+                        continue
+
+        torch.save(lstm.state_dict(), LSTM_PATH)
+
+    except Exception:
+        print("Erro no treinamento:")
+        print(traceback.format_exc())
 
 def text_to_vec(word):
     model = Word2Vec.load(MODEL_PATH)
@@ -92,9 +103,15 @@ def text_to_vec(word):
 
 def vec_to_word(vec):
     model = Word2Vec.load(MODEL_PATH)
-    return model.wv.similar_by_vector(vec.view(-1).detach().numpy(), topn=1)[0][0]
+    try:
+        return model.wv.similar_by_vector(vec.view(-1).detach().numpy(), topn=1)[0][0]
+    except Exception:
+        return None
 
 def generate_sentence(start_word='ansiedade', max_words=20):
+    if not os.path.exists(LSTM_PATH):
+        return "Respire fundo e tente novamente."
+
     model = LSTMGenerator(100, 128, 100)
     model.load_state_dict(torch.load(LSTM_PATH))
     model.eval()
@@ -106,7 +123,7 @@ def generate_sentence(start_word='ansiedade', max_words=20):
             break
         out_vec = model(vec_input)
         next_word = vec_to_word(out_vec[0])
-        if next_word in sentence or next_word is None:
+        if not next_word or next_word in sentence:
             break
         sentence.append(next_word)
     return ' '.join(sentence)
@@ -115,19 +132,13 @@ def generate_sentence(start_word='ansiedade', max_words=20):
 def respond():
     try:
         data = request.json
-        msg = data.get('message')
+        msg = data.get('message', '').strip()
 
-        if not msg or not msg.strip():
+        if not msg:
             return jsonify({"response": "Por favor, envie uma mensagem válida."})
 
-        history.append(msg.strip())
-
-        start_word = msg.strip().split()[0]
-        sentence = generate_sentence(start_word=start_word)
-
-        palavras_banidas = []
-        if any(p in sentence for p in palavras_banidas):
-            sentence = "calma e respire fundo."
+        history.append(msg)
+        sentence = generate_sentence(start_word=msg.split()[0])
 
         resposta = f"Vamos conversar sobre isso... {sentence}"
 
@@ -137,6 +148,7 @@ def respond():
         return jsonify({"response": resposta})
 
     except Exception:
+        print("Erro ao responder:")
         print(traceback.format_exc())
         return jsonify({"response": "Desculpa, deu erro interno."}), 500
 
@@ -148,4 +160,3 @@ if __name__ == '__main__':
     history = load_history()
     port = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=port)
-
