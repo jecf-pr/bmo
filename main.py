@@ -18,6 +18,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 history = deque(maxlen=500)
 
+# Frases iniciais padrão
 history.extend([
     "Lembre-se: respirar fundo ajuda a acalmar a mente.",
     "A ansiedade não define quem você é.",
@@ -29,6 +30,7 @@ history.extend([
     "O autoconhecimento é um passo importante para a mudança."
 ])
 
+# Carrega prompts iniciais, se houver
 if os.path.exists('prompts_iniciais.txt'):
     with open('prompts_iniciais.txt', 'r') as f:
         linhas = [linha.strip() for linha in f if linha.strip()]
@@ -133,10 +135,9 @@ def respond():
     try:
         print("📥 Cabeçalhos recebidos:", request.headers)
         print("📦 Corpo bruto:", request.data)
-        print("📄 JSON interpretado:", request.get_json(force=True))  # força leitura como JSON
 
-        data = request.get_json(force=True)
-        msg = data.get('message', '').strip()
+        msg = request.form.get('message', '').strip()
+        print("🧠 Mensagem recebida:", msg)
 
         if not msg:
             return jsonify({"response": "Por favor, envie uma mensagem válida."})
@@ -164,4 +165,3 @@ if __name__ == '__main__':
     history = load_history()
     port = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=port)
-
