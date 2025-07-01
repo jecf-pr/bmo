@@ -20,14 +20,7 @@ history = deque(maxlen=500)
 
 # Frases iniciais padrão
 history.extend([
-    "Lembre-se: respirar fundo ajuda a acalmar a mente.",
-    "A ansiedade não define quem você é.",
-    "É saudável expressar emoções.",
-    "Conversar pode ajudar a entender seus sentimentos.",
-    "Os desafios fazem parte do crescimento pessoal.",
-    "Você tem valor e merece cuidado.",
-    "Buscar ajuda é um sinal de força, não de fraqueza.",
-    "O autoconhecimento é um passo importante para a mudança."
+    "Oiiii! Quem quer jogar VIDEOGAME!? 🎮✨"
 ])
 
 # Carrega prompts iniciais, se houver
