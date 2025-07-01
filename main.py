@@ -31,8 +31,8 @@ history.extend([
 ])
 
 # Carrega prompts iniciais, se houver
-if os.path.exists('prompts_iniciais.txt'):
-    with open('prompts_iniciais.txt', 'r') as f:
+if os.path.exists('pesquisas.txt'):
+    with open('pesquisas.txt', 'r') as f:
         linhas = [linha.strip() for linha in f if linha.strip()]
         history.extend(linhas)
 
@@ -102,7 +102,7 @@ def text_to_vec(word):
     if word in model.wv:
         return torch.tensor(model.wv[word]).view(1, 1, -1)
     return None
-
+    
 def vec_to_word(vec):
     model = Word2Vec.load(MODEL_PATH)
     try:
