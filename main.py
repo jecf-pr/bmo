@@ -25,7 +25,7 @@ history.extend([
 
 # Carrega prompts iniciais, se houver
 if os.path.exists('pesquisas.txt'):
-    with open('pesquisas.txt', 'r') as f:
+    with open('pesquisas.txt', 'r', encoding='utf-8') as f:
         linhas = [linha.strip() for linha in f if linha.strip()]
         history.extend(linhas)
 
