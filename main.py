@@ -11,7 +11,7 @@ INDEX_FILE = "model/faiss_index.pkl"
 EMBEDDINGS_FILE = "model/embeddings.npy"
 METADATA_FILE = "model/metadata.pkl"
 MODEL_NAME = "all-MiniLM-L6-v2"
-PROMPT_TEMPLATE = "Responda como um professor de filosofia que entende muito do assunto e usa uma linguagem clara e envolvente. Use como base o seguinte: \n\n{contexto}\n\nPergunta: {pergunta}"
+PROMPT_TEMPLATE = "Responda como um professor quee entende do assunto tratado, respondendo de forma clara e consisa, porem, se comunicando de uma forma jovial e infantil. \n\n{contexto}\n\nPergunta: {pergunta}"
 
 app = Flask(__name__)
 CORS(app)
