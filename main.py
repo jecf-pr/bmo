@@ -1,5 +1,4 @@
-import os  # <-- ADICIONADO
-import glob
+import os
 import pickle
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -7,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-TEXT_FOLDER = "conteudo"
+TEXT_FILE = "conteudo"  # Agora é um arquivo, não uma pasta
 INDEX_FILE = "model/faiss_index.pkl"
 EMBEDDINGS_FILE = "model/embeddings.npy"
 METADATA_FILE = "model/metadata.pkl"
@@ -19,24 +18,21 @@ CORS(app)
 model = SentenceTransformer(MODEL_NAME)
 
 def indexar_textos():
-    textos = []
-    fontes = []
+    if not os.path.exists(TEXT_FILE):
+        raise FileNotFoundError(f"O arquivo '{TEXT_FILE}' não foi encontrado.")
 
-    # Verifica se o diretório existe e é uma pasta
-    if os.path.exists(TEXT_FOLDER):
-        if not os.path.isdir(TEXT_FOLDER):
-            raise Exception(f"O caminho '{TEXT_FOLDER}' existe mas não é uma pasta.")
-    else:
-        os.makedirs(TEXT_FOLDER)
+    if os.path.isdir(TEXT_FILE):
+        raise Exception(f"O caminho '{TEXT_FILE}' é uma pasta, mas esperava um arquivo.")
 
-    for filename in glob.glob(f"{TEXT_FOLDER}/*.txt"):
-        with open(filename, 'r', encoding='utf-8') as f:
-            texto = f.read()
-            textos.append(texto)
-            fontes.append(os.path.basename(filename))
+    with open(TEXT_FILE, 'r', encoding='utf-8') as f:
+        conteudo = f.read()
+
+    # Vamos dividir o conteúdo em "textos" usando quebras de linha duplas como separador
+    textos = [t.strip() for t in conteudo.split("\n\n") if t.strip()]
+    fontes = [f"Trecho {i+1}" for i in range(len(textos))]
 
     if not textos:
-        raise ValueError("Nenhum arquivo de texto encontrado para indexar.")
+        raise ValueError("Nenhum texto encontrado dentro do arquivo para indexar.")
 
     embeddings = model.encode(textos, convert_to_numpy=True)
     index = faiss.IndexFlatL2(embeddings.shape[1])
@@ -77,12 +73,6 @@ def responder():
         return jsonify({"resposta": prompt_final})
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
-
-if __name__ == "__main__":
-    if not os.path.exists(INDEX_FILE):
-        indexar_textos()
-    app.run(host="0.0.0.0", port=10000)
-
 
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
