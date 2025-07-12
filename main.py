@@ -3,8 +3,10 @@ from flask_cors import CORS
 import pickle
 from sentence_transformers import SentenceTransformer, util
 
-INDEX_FILE = 'filosofia_index.pkl'
-model = SentenceTransformer('all-MiniLM-L6-v2')
+obj = {}
+with open("filosofia_index.pkl", "wb") as f:
+    pickle.dump(obj, f)
+
 
 with open(INDEX_FILE, 'rb') as f:
     base = pickle.load(f)
