@@ -8,3 +8,4 @@ nltk==3.9.1
 torch==2.1.2+cpu
 torchvision==0.16.2+cpu
 scikit-learn
+numpy<2.0.0
