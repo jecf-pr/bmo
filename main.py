@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-TEXT_FOLDER = "filosofia"
+TEXT_FOLDER = "conteudo.txt"
 INDEX_FILE = "model/faiss_index.pkl"
 EMBEDDINGS_FILE = "model/embeddings.npy"
 METADATA_FILE = "model/metadata.pkl"
