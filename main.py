@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 
-TEXT_FILE = "conteudo"  # Agora é um arquivo, não uma pasta
+TEXT_FILE = "conteudo"  # Arquivo de texto com o conteúdo
 INDEX_FILE = "model/faiss_index.pkl"
 EMBEDDINGS_FILE = "model/embeddings.npy"
 METADATA_FILE = "model/metadata.pkl"
@@ -27,7 +27,6 @@ def indexar_textos():
     with open(TEXT_FILE, 'r', encoding='utf-8') as f:
         conteudo = f.read()
 
-    # Vamos dividir o conteúdo em "textos" usando quebras de linha duplas como separador
     textos = [t.strip() for t in conteudo.split("\n\n") if t.strip()]
     fontes = [f"Trecho {i+1}" for i in range(len(textos))]
 
@@ -61,8 +60,8 @@ def buscar_contexto(pergunta, top_k=1):
 
     return textos[I[0][0]]
 
-@app.route("/responder", methods=["POST"])
-def responder():
+@app.route("/message", methods=["POST"])
+def message():
     pergunta = request.form.get("message", "")
     if not pergunta:
         return jsonify({"erro": "Pergunta não fornecida"}), 400
@@ -70,9 +69,9 @@ def responder():
     try:
         contexto = buscar_contexto(pergunta)
         prompt_final = PROMPT_TEMPLATE.format(contexto=contexto, pergunta=pergunta)
-        return jsonify({"resposta": prompt_final})
+        return jsonify({"response": prompt_final})
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({"response": f"Erro ao processar: {str(e)}"}), 500
 
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
