@@ -1,43 +1,68 @@
+import os
+import glob
+import pickle
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pickle
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
 
-obj = {}
-with open("filosofia_index.pkl", "wb") as f:
-    pickle.dump(obj, f)
-
-
-with open(INDEX_FILE, 'rb') as f:
-    base = pickle.load(f)
+TEXT_FOLDER = "filosofia"
+INDEX_FILE = "model/faiss_index.pkl"
+EMBEDDINGS_FILE = "model/embeddings.npy"
+METADATA_FILE = "model/metadata.pkl"
+MODEL_NAME = "all-MiniLM-L6-v2"
+PROMPT_TEMPLATE = "Responda como um professor de filosofia que entende muito do assunto e usa uma linguagem clara e envolvente. Use como base o seguinte: \\n\\n{contexto}\\n\\nPergunta: {pergunta}"
 
 app = Flask(__name__)
 CORS(app)
+model = SentenceTransformer(MODEL_NAME)
 
-@app.route("/message", methods=["POST"])
+def indexar_textos():
+    textos = []
+    fontes = []
+    for filename in glob.glob(f"{TEXT_FOLDER}/*.txt"):
+        with open(filename, 'r', encoding='utf-8') as f:
+            texto = f.read()
+            textos.append(texto)
+            fontes.append(os.path.basename(filename))
+    embeddings = model.encode(textos, convert_to_numpy=True)
+    index = faiss.IndexFlatL2(embeddings.shape[1])
+    index.add(embeddings)
+
+    os.makedirs("model", exist_ok=True)
+    with open(INDEX_FILE, 'wb') as f:
+        pickle.dump(index, f)
+    np.save(EMBEDDINGS_FILE, embeddings)
+    with open(METADATA_FILE, 'wb') as f:
+        pickle.dump(textos, f)
+    print("Indexação concluída.")
+
+def buscar_contexto(pergunta, top_k=1):
+    if not os.path.exists(INDEX_FILE):
+        indexar_textos()
+    with open(INDEX_FILE, 'rb') as f:
+        index = pickle.load(f)
+    with open(METADATA_FILE, 'rb') as f:
+        textos = pickle.load(f)
+
+    pergunta_emb = model.encode([pergunta])
+    D, I = index.search(pergunta_emb, top_k)
+    return textos[I[0][0]]
+
+@app.route("/responder", methods=["POST"])
 def responder():
-    try:
-        data = request.get_json(force=True)
-        pergunta = data.get("message", "")
-        if not pergunta.strip():
-            return jsonify({"response": "Pergunta vazia"})
+    data = request.json
+    pergunta = data.get("pergunta", "")
+    if not pergunta:
+        return jsonify({"erro": "Pergunta não fornecida"}), 400
 
-        emb_user = model.encode(pergunta)
-        melhores = sorted(
-            base,
-            key=lambda x: util.cos_sim(emb_user, x['embedding']),
-            reverse=True
-        )
+    contexto = buscar_contexto(pergunta)
+    prompt_final = PROMPT_TEMPLATE.format(contexto=contexto, pergunta=pergunta)
 
-        resposta = melhores[0]['texto']
-        return jsonify({"response": resposta})
+    return jsonify({"resposta": prompt_final})
 
-    except Exception as e:
-        return jsonify({"response": f"Erro: {str(e)}"}), 500
-
-@app.route("/")
-def home():
-    return "Servidor BMO pronto 🧠"
-
-if __name__ == '__main__':
-    app.run(port=3000)
+if __name__ == "__main__":
+    if not os.path.exists(INDEX_FILE):
+        indexar_textos()
+    app.run(host="0.0.0.0", port=10000)
