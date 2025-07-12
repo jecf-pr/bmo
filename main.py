@@ -1,168 +1,45 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from gensim.models import Word2Vec
-import traceback
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from collections import deque
 import pickle
-import os
+from sentence_transformers import SentenceTransformer, util
+import numpy as np
 
-HISTORY_PATH = 'database/user_history.pkl'
-MODEL_PATH = 'model/word2vec.model'
-LSTM_PATH = 'model/textgen_lstm.pt'
+INDEX_FILE = 'filosofia_index.pkl'
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+with open(INDEX_FILE, 'rb') as f:
+    base = pickle.load(f)
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app)
 
-history = deque(maxlen=500)
-
-# Frases iniciais padrão
-history.extend([
-    "Oiiii! Quem quer jogar VIDEOGAME!? 🎮✨"
-])
-
-# Carrega prompts iniciais, se houver
-if os.path.exists('pesquisas.txt'):
-    with open('pesquisas.txt', 'r', encoding='utf-8') as f:
-        linhas = [linha.strip() for linha in f if linha.strip()]
-        history.extend(linhas)
-
-def save_history():
-    os.makedirs(os.path.dirname(HISTORY_PATH), exist_ok=True)
-    with open(HISTORY_PATH, 'wb') as f:
-        pickle.dump(history, f)
-
-def load_history():
-    if os.path.exists(HISTORY_PATH):
-        with open(HISTORY_PATH, 'rb') as f:
-            return pickle.load(f)
-    return history
-
-class LSTMGenerator(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(LSTMGenerator, self).__init__()
-        self.lstm = nn.LSTM(input_dim, hidden_dim)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        out = self.fc(out[-1])
-        return out
-
-def train_on_new_data():
+@app.route("/message", methods=["POST"])
+def responder():
     try:
-        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-        os.makedirs(os.path.dirname(LSTM_PATH), exist_ok=True)
+        data = request.get_json(force=True)
+        pergunta = data.get("message", "")
+        if not pergunta.strip():
+            return jsonify({"response": "Pergunta vazia"})
 
-        sentences = [msg.split() for msg in history if msg.strip()]
-        if not sentences:
-            return
+        emb_user = model.encode(pergunta)
+        melhores = sorted(
+            base,
+            key=lambda x: util.cos_sim(emb_user, x['embedding']),
+            reverse=True
+        )
 
-        model = Word2Vec(sentences, vector_size=100, window=5, min_count=1, workers=1)
-        model.save(MODEL_PATH)
-
-        lstm = LSTMGenerator(100, 128, 100)
-        criterion = nn.MSELoss()
-        optimizer = optim.Adam(lstm.parameters(), lr=0.001)
-
-        for epoch in range(1):
-            for sentence in sentences:
-                for i in range(len(sentence) - 1):
-                    try:
-                        input_word = torch.tensor(model.wv[sentence[i]])
-                        target_word = torch.tensor(model.wv[sentence[i + 1]])
-                        input_word = input_word.view(1, 1, -1)
-                        target_word = target_word.view(1, -1)
-
-                        output = lstm(input_word)
-                        loss = criterion(output, target_word)
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-                    except Exception:
-                        continue
-
-        torch.save(lstm.state_dict(), LSTM_PATH)
-
-    except Exception:
-        print("Erro no treinamento:")
-        print(traceback.format_exc())
-
-def text_to_vec(word):
-    model = Word2Vec.load(MODEL_PATH)
-    if word in model.wv:
-        return torch.tensor(model.wv[word]).view(1, 1, -1)
-    return None
-    
-def vec_to_word(vec):
-    model = Word2Vec.load(MODEL_PATH)
-    try:
-        return model.wv.similar_by_vector(vec.view(-1).detach().numpy(), topn=1)[0][0]
-    except Exception:
-        return None
-
-def generate_sentence(start_word='ansiedade', max_words=20):
-    if not os.path.exists(LSTM_PATH):
-        return "Respire fundo e tente novamente."
-
-    model = LSTMGenerator(100, 128, 100)
-    model.load_state_dict(torch.load(LSTM_PATH))
-    model.eval()
-
-    sentence = [start_word]
-    for _ in range(max_words):
-        vec_input = text_to_vec(sentence[-1])
-        if vec_input is None:
-            break
-        out_vec = model(vec_input)
-        next_word = vec_to_word(out_vec[0])
-        if not next_word or next_word in sentence:
-            break
-        sentence.append(next_word)
-    return ' '.join(sentence)
-
-@app.route('/message', methods=['POST'])
-def respond():
-    try:
-        print("📥 Cabeçalhos recebidos:", request.headers)
-        print("📦 Corpo bruto:", request.data)
-
-        msg = ''
-
-        # Tenta extrair do JSON (application/json)
-        if request.is_json:
-            data = request.get_json()
-            msg = data.get('message', '').strip()
-
-        # Tenta extrair do form (application/x-www-form-urlencoded)
-        elif 'message' in request.form:
-            msg = request.form.get('message', '').strip()
-
-        print("🧠 Mensagem recebida:", msg)
-
-        if not msg:
-            return jsonify({"response": "Por favor, envie uma mensagem válida."})
-
-        history.append(msg)
-        sentence = generate_sentence(start_word=msg.split()[0])
-
-        resposta = f"Vamos conversar sobre isso... {sentence}"
-
-        train_on_new_data()
-        save_history()
-
+        resposta = melhores[0]['texto']
         return jsonify({"response": resposta})
 
-    except Exception:
-        print("💥 Erro ao responder:")
-        print(traceback.format_exc())
-        return jsonify({"response": "Desculpa, deu erro interno."}), 500
+    except Exception as e:
+        return jsonify({"response": f"Erro: {str(e)}"}), 500
 
-@app.route('/')
+@app.route("/")
 def home():
-    return "BMO está online. Envie POST para /message"
+    return "Servidor BMO pronto 🧠"
+
+if __name__ == '__main__':
+    app.run(port=3000)
 
 if __name__ == '__main__':
     import os
