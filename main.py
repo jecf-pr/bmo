@@ -1,4 +1,4 @@
-import os
+import os  # <-- ADICIONADO
 import glob
 import pickle
 from flask import Flask, request, jsonify
@@ -22,7 +22,12 @@ def indexar_textos():
     textos = []
     fontes = []
 
-    os.makedirs(TEXT_FOLDER, exist_ok=True)  # Garante que a pasta existe
+    # Verifica se o diretório existe e é uma pasta
+    if os.path.exists(TEXT_FOLDER):
+        if not os.path.isdir(TEXT_FOLDER):
+            raise Exception(f"O caminho '{TEXT_FOLDER}' existe mas não é uma pasta.")
+    else:
+        os.makedirs(TEXT_FOLDER)
 
     for filename in glob.glob(f"{TEXT_FOLDER}/*.txt"):
         with open(filename, 'r', encoding='utf-8') as f:
@@ -77,6 +82,7 @@ if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
     app.run(host="0.0.0.0", port=10000)
+
 
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
