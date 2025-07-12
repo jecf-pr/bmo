@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pickle
 from sentence_transformers import SentenceTransformer, util
-import numpy as np
 
 INDEX_FILE = 'filosofia_index.pkl'
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -40,9 +39,3 @@ def home():
 
 if __name__ == '__main__':
     app.run(port=3000)
-
-if __name__ == '__main__':
-    import os
-    history = load_history()
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)

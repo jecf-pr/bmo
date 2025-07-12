@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 TXT_FOLDER = 'filosofia_txts'
 INDEX_FILE = 'filosofia_index.pkl'
 
-model = SentenceTransformer('all-MiniLM-L6-v2')  # leve e rápido
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def processar_txts():
     dados = []
