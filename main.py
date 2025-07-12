@@ -21,8 +21,9 @@ PERSONALIDADE_IA = (
 )
 
 # === IA local Hugging Face ===
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2")
-model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2")
+tokenizer = AutoTokenizer.from_pretrained("tiiuae/falcon-rw-1b")
+model = AutoModelForCausalLM.from_pretrained("tiiuae/falcon-rw-1b")
+
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # === Flask ===
