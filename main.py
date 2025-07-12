@@ -12,21 +12,35 @@ INDEX_FILE = "model/faiss_index.pkl"
 EMBEDDINGS_FILE = "model/embeddings.npy"
 METADATA_FILE = "model/metadata.pkl"
 MODEL_NAME = "all-MiniLM-L6-v2"
-PROMPT_TEMPLATE = "Responda como um professor de filosofia que entende muito do assunto e usa uma linguagem clara e envolvente. Use como base o seguinte: \\n\\n{contexto}\\n\\nPergunta: {pergunta}"
+PROMPT_TEMPLATE = "Responda como um professor de filosofia que entende muito do assunto e usa uma linguagem clara e envolvente. Use como base o seguinte: \n\n{contexto}\n\nPergunta: {pergunta}"
 
 app = Flask(__name__)
 CORS(app)
 model = SentenceTransformer(MODEL_NAME)
 
 def indexar_textos():
+    if not os.path.exists(TEXT_FOLDER):
+        print(f"Pasta '{TEXT_FOLDER}' não encontrada.")
+        return
+
     textos = []
     fontes = []
     for filename in glob.glob(f"{TEXT_FOLDER}/*.txt"):
         with open(filename, 'r', encoding='utf-8') as f:
-            texto = f.read()
-            textos.append(texto)
-            fontes.append(os.path.basename(filename))
+            texto = f.read().strip()
+            if texto:
+                textos.append(texto)
+                fontes.append(os.path.basename(filename))
+
+    if not textos:
+        print("Nenhum texto válido encontrado.")
+        return
+
     embeddings = model.encode(textos, convert_to_numpy=True)
+    if embeddings.shape[0] == 0:
+        print("Nenhum embedding foi gerado.")
+        return
+
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(embeddings)
 
@@ -36,11 +50,16 @@ def indexar_textos():
     np.save(EMBEDDINGS_FILE, embeddings)
     with open(METADATA_FILE, 'wb') as f:
         pickle.dump(textos, f)
-    print("Indexação concluída.")
+
+    print("Indexação concluída com sucesso.")
 
 def buscar_contexto(pergunta, top_k=1):
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
+
+    if not os.path.exists(INDEX_FILE) or not os.path.exists(METADATA_FILE):
+        return "Não foi possível carregar os textos para buscar o contexto."
+
     with open(INDEX_FILE, 'rb') as f:
         index = pickle.load(f)
     with open(METADATA_FILE, 'rb') as f:
