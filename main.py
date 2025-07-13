@@ -86,7 +86,7 @@ def gerar_resposta(prompt):
         return f"Erro de requisição: {str(e)}"
         
 # Rota principal da IA
-@app.route("/message", methods=["POST"])
+@app.route("/", methods=["POST"])
 def message():
     pergunta = request.form.get("message", "")
     if not pergunta:
