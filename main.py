@@ -13,7 +13,8 @@ TEXTOS_FILE = "model/textos.pkl"
 
 # Configurar seu modelo Hugging Face aqui
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
-HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/distilgpt2"  # ou flan-t5-small
+HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/sshleifer/distilgpt2"
+  # ou flan-t5-small
 
 HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
