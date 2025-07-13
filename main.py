@@ -4,16 +4,18 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+import requests
 
 TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
-# Modelo ultraleve (pode testar com distilgpt2 depois)
-tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
-model = AutoModelForCausalLM.from_pretrained("distilgpt2")
-pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
+HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/distilgpt2"  # ou flan-t5
+
+HEADERS = {
+    "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
+}
 
 app = Flask(__name__)
 CORS(app)
@@ -49,8 +51,21 @@ def buscar_contexto(pergunta):
     return textos[idx]
 
 def gerar_resposta(prompt):
-    resultado = pipe(prompt, max_new_tokens=100, temperature=0.7)[0]["generated_text"]
-    return resultado[len(prompt):].strip()
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 150,
+            "temperature": 0.7
+        }
+    }
+
+    response = requests.post(HUGGINGFACE_MODEL_URL, headers=HEADERS, json=payload)
+    resposta = response.json()
+
+    if isinstance(resposta, dict) and "error" in resposta:
+        return f"Erro da Hugging Face: {resposta['error']}"
+    
+    return resposta[0]["generated_text"][len(prompt):].strip()
 
 @app.route("/message", methods=["POST"])
 def message():
