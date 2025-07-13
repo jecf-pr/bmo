@@ -11,7 +11,8 @@ TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
-HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
+HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
+
 
 HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
