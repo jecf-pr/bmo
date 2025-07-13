@@ -11,8 +11,8 @@ INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
 # Modelo ultraleve (pode testar com distilgpt2 depois)
-tokenizer = AutoTokenizer.from_pretrained("sshleifer/tiny-gpt2")
-model = AutoModelForCausalLM.from_pretrained("sshleifer/tiny-gpt2")
+tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+model = AutoModelForCausalLM.from_pretrained("distilgpt2")
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 app = Flask(__name__)
