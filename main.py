@@ -1,8 +1,6 @@
 import os
 import pickle
 import requests
-import jwt
-import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -13,16 +11,14 @@ TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
-# Botpress configs
-BOTPRESS_URL = "https://api.botpress.cloud/v1/chat/messages"
 BOT_ID = "acbf5504-742d-4241-93ca-816cf95ed2b9"
 CLIENT_ID = "3d43f9e1-cf6f-4a1c-b254-3d7906744d47"
-BOT_TOKEN = os.environ.get("BOTPRESS_TOKEN")  # crie a variável no Render!
+BOT_TOKEN = os.environ.get("BOTPRESS_TOKEN")
 
 app = Flask(__name__)
 CORS(app)
 
-# Indexar textos locais para buscar contexto
+# ===================== TEXTOS ============================
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
@@ -52,58 +48,72 @@ def buscar_contexto(pergunta):
     idx = scores.argmax()
     return textos[idx]
 
-# Chamar o Botpress remoto com token e clientId
-def enviar_para_botpress(pergunta):
-    payload = {
-        "botId": BOT_ID,
-        "clientId": CLIENT_ID,
-        "messages": [{"type": "text", "content": pergunta}]
-    }
-
+# ===================== BOTPRESS ============================
+def criar_conversa():
+    url = f"https://api.botpress.cloud/v1/bots/{BOT_ID}/conversations"
     headers = {
         "Authorization": f"Bearer {BOT_TOKEN}",
         "Content-Type": "application/json"
     }
+    payload = {
+        "clientId": CLIENT_ID
+    }
+    res = requests.post(url, json=payload, headers=headers)
+    res.raise_for_status()
+    return res.json()["conversationId"]
 
-    try:
-        r = requests.post(BOTPRESS_URL, json=payload, headers=headers, timeout=30)
-        if r.status_code != 200:
-            return f"Erro HTTP {r.status_code}: {r.text}"
+def enviar_mensagem(conversation_id, texto):
+    url = f"https://api.botpress.cloud/v1/bots/{BOT_ID}/conversations/{conversation_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {BOT_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "type": "text",
+        "role": "user",
+        "content": texto
+    }
+    res = requests.post(url, json=payload, headers=headers)
+    res.raise_for_status()
 
-        resposta = r.json()
-        messages = resposta.get("messages", [])
-        if messages:
-            return messages[-1]["content"]
-        else:
-            return "Erro: resposta vazia do Botpress."
+def obter_resposta(conversation_id):
+    url = f"https://api.botpress.cloud/v1/bots/{BOT_ID}/conversations/{conversation_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {BOT_TOKEN}"
+    }
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+    mensagens = res.json()["messages"]
 
-    except Exception as e:
-        return f"Erro ao acessar Botpress: {str(e)}"
+    for msg in reversed(mensagens):
+        if msg["role"] == "bot":
+            return msg["content"]
+    return "Nenhuma resposta do bot."
 
+def conversar_com_botpress(pergunta):
+    conversation_id = criar_conversa()
+    enviar_mensagem(conversation_id, pergunta)
+    return obter_resposta(conversation_id)
+
+# ===================== FLASK ============================
 @app.route("/", methods=["GET"])
 def ping():
-    return "Chatbot online!"
+    return "Chatbot online com Botpress!"
 
 @app.route("/message", methods=["POST"])
 def message():
+    pergunta = request.form.get("message", "")
+    if not pergunta:
+        return jsonify({"erro": "Pergunta não fornecida"}), 400
+
     try:
-        pergunta = request.form.get("message", "")
-        print("PERGUNTA:", pergunta)
-
-        if not pergunta:
-            return jsonify({"erro": "Pergunta não fornecida"}), 400
-
         contexto = buscar_contexto(pergunta)
-        print("CONTEXTO:", contexto)
-
         pergunta_com_contexto = f"{contexto}\n\n{pergunta}"
-        resposta = enviar_para_botpress(pergunta_com_contexto)
-        print("RESPOSTA:", resposta)
-
+        resposta = conversar_com_botpress(pergunta_com_contexto)
         return jsonify({"response": resposta})
     except Exception as e:
         import traceback
-        print("ERRO AO PROCESSAR:", traceback.format_exc())
+        print(traceback.format_exc())
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
 if __name__ == "__main__":
