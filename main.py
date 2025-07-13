@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+import traceback
 
 app = Flask(__name__)
 
@@ -13,59 +14,76 @@ HEADERS = {
     'Content-Type': 'application/json'
 }
 
-# Criar uma conversa nova
+# Função para criar uma nova conversa
 def criar_conversa():
-    response = requests.post(BOTPRESS_API_URL, headers=HEADERS)
-    if response.status_code == 200:
-        return response.json()['id']
-    else:
-        print("Erro ao criar conversa:", response.text)
+    try:
+        response = requests.post(BOTPRESS_API_URL, headers=HEADERS)
+        print("Resposta da criação de conversa:", response.status_code, response.text)
+        if response.status_code == 200:
+            return response.json()['id']
+        return None
+    except Exception as e:
+        print("Erro ao criar conversa:", str(e))
         return None
 
-# Enviar mensagem ao bot e obter resposta
+# Função para enviar mensagem ao bot
 def enviar_mensagem(conversation_id, mensagem):
-    url = f'{BOTPRESS_API_URL}/{conversation_id}/messages'
-    payload = {
-        "type": "text",
-        "text": mensagem
-    }
+    try:
+        url = f'{BOTPRESS_API_URL}/{conversation_id}/messages'
+        payload = {
+            "type": "text",
+            "text": mensagem
+        }
 
-    # Envia mensagem
-    response = requests.post(url, headers=HEADERS, json=payload)
-    if response.status_code != 200:
-        print("Erro ao enviar mensagem:", response.text)
+        response = requests.post(url, headers=HEADERS, json=payload)
+        print("Resposta ao enviar mensagem:", response.status_code, response.text)
+        if response.status_code != 200:
+            return None
+
+        resposta = requests.get(url, headers=HEADERS)
+        mensagens = resposta.json().get('messages', [])
+        respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
+
+        return respostas[-1] if respostas else "Sem resposta do bot."
+
+    except Exception as e:
+        print("Erro ao enviar mensagem:", str(e))
         return None
 
-    # Busca respostas (polling simples)
-    resposta = requests.get(url, headers=HEADERS)
-    mensagens = resposta.json().get('messages', [])
-    respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
-
-    return respostas[-1] if respostas else "Sem resposta do bot."
-
-# Rota principal
+# Rota para testar o servidor
 @app.route('/')
 def index():
     return 'Servidor Flask com Botpress está rodando!'
 
-# Rota para receber mensagens
+# Rota para receber e repassar mensagens
 @app.route('/mensagem', methods=['POST'])
 def mensagem():
-    texto_usuario = request.form.get('message')
+    try:
+        print("Requisição recebida")
+        texto_usuario = request.form.get('message')
+        print("Mensagem do usuário:", texto_usuario)
 
-    if not texto_usuario:
-        return jsonify({'erro': 'Campo "message" não foi enviado.'}), 400
+        if not texto_usuario:
+            return jsonify({'erro': 'Campo "message" não foi enviado.'}), 400
 
-    conversa_id = criar_conversa()
-    if not conversa_id:
-        return jsonify({'erro': 'Erro ao criar conversa com o bot.'}), 500
+        conversa_id = criar_conversa()
+        print("ID da conversa:", conversa_id)
+        if not conversa_id:
+            return jsonify({'erro': 'Erro ao criar conversa com o bot.'}), 500
 
-    resposta_bot = enviar_mensagem(conversa_id, texto_usuario)
-    if not resposta_bot:
-        return jsonify({'erro': 'Erro ao obter resposta do bot.'}), 500
+        resposta_bot = enviar_mensagem(conversa_id, texto_usuario)
+        print("Resposta do bot:", resposta_bot)
+        if not resposta_bot:
+            return jsonify({'erro': 'Erro ao obter resposta do bot.'}), 500
 
-    return jsonify({'response': resposta_bot})
+        return jsonify({'response': resposta_bot})
 
+    except Exception as e:
+        print("Erro interno:")
+        traceback.print_exc()
+        return jsonify({'erro': 'Erro interno no servidor', 'detalhes': str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+# Executar localmente
+if __name__ == '__main__':
+     app.run(host="0.0.0.0", port=10000)
+
