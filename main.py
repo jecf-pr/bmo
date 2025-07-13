@@ -6,22 +6,22 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import requests
 
-# Caminhos dos arquivos
+# Arquivos e variáveis
 TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
-
-# Hugging Face
-HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")  # Defina no Render!
+HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
 HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 
 HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
 }
 
+# Inicializa Flask
 app = Flask(__name__)
 CORS(app)
 
+# Indexa os textos, cria a pasta model/ e os arquivos .pkl
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
@@ -29,9 +29,10 @@ def indexar_textos():
     with open(TEXT_FILE, "r", encoding="utf-8") as f:
         textos = [t.strip() for t in f.read().split("\n\n") if t.strip()]
 
+    os.makedirs("model", exist_ok=True)
+
     vectorizer = TfidfVectorizer().fit(textos)
 
-    os.makedirs("model", exist_ok=True)
     with open(INDEX_FILE, "wb") as f:
         pickle.dump(vectorizer, f)
     with open(TEXTOS_FILE, "wb") as f:
@@ -39,6 +40,7 @@ def indexar_textos():
 
     print("Indexação concluída.")
 
+# Busca o trecho mais relevante com base na pergunta
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
         vectorizer = pickle.load(f)
@@ -51,13 +53,11 @@ def buscar_contexto(pergunta):
     idx = scores.argmax()
     return textos[idx]
 
+# Chama a API da Hugging Face
 def gerar_resposta(prompt):
     payload = {
         "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 150,
-            "temperature": 0.7
-        }
+        "parameters": {"max_new_tokens": 150, "temperature": 0.7}
     }
 
     try:
@@ -71,15 +71,14 @@ def gerar_resposta(prompt):
             return f"Erro HTTP {response.status_code}: {response.text}"
 
         resposta = response.json()
-
         if isinstance(resposta, list) and "generated_text" in resposta[0]:
             return resposta[0]["generated_text"].strip()
 
         return "Erro: formato inesperado de resposta"
-
     except Exception as e:
         return f"Erro de requisição: {str(e)}"
 
+# Rota principal
 @app.route("/", methods=["POST"])
 def message():
     pergunta = ""
@@ -100,11 +99,9 @@ def message():
     except Exception as e:
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
-if __name__ == "__main__":
-    if not os.path.exists(INDEX_FILE):
-        print("Gerando índice...")
+# Gera os arquivos no início do app, mesmo com gunicorn
+if not os.path.exists(INDEX_FILE):
+    try:
         indexar_textos()
-    else:
-        print("Índice já existe.")
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    except Exception as e:
+        print(f"[ERRO] Falha ao indexar textos: {str(e)}")
