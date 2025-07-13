@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import traceback
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -32,6 +33,7 @@ def enviar_mensagem(conversation_id, mensagem):
         url = f'{BOTPRESS_API_URL}/{conversation_id}/messages'
         payload = {"type": "text", "text": mensagem}
 
+        # Envia mensagem
         response = requests.post(url, headers=HEADERS, json=payload)
         print("Enviar msg status:", response.status_code)
         print("Enviar msg body:", response.text)
@@ -39,17 +41,18 @@ def enviar_mensagem(conversation_id, mensagem):
             print("Falha ao enviar mensagem para o bot.")
             return "Erro ao enviar mensagem ao bot."
 
-        resposta = requests.get(url, headers=HEADERS)
-        print("Resposta get mensagens status:", resposta.status_code)
-        print("Resposta get mensagens body:", resposta.text)
+        # Polling para esperar a resposta do bot
+        for _ in range(5):  # tenta até 5 vezes
+            time.sleep(1)  # espera 1 segundo
+            resposta = requests.get(url, headers=HEADERS)
+            print("Resposta get mensagens status:", resposta.status_code)
+            print("Resposta get mensagens body:", resposta.text)
+            mensagens = resposta.json().get('messages', [])
+            respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
+            if respostas:
+                return respostas[-1]
 
-        mensagens = resposta.json().get('messages', [])
-        respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
-
-        if respostas:
-            return respostas[-1]
-        else:
-            return "Bot não respondeu."
+        return "Bot não respondeu após esperar."
 
     except Exception as e:
         print("Erro enviar mensagem:", e)
@@ -87,4 +90,3 @@ if __name__ == '__main__':
     import os
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=True)
-
