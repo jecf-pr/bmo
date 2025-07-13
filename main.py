@@ -87,6 +87,9 @@ def gerar_resposta(prompt):
 
     except Exception as e:
         return f"Erro de requisição: {str(e)}"
+@app.route("/", methods=["GET"])
+def ping():
+    return "Chatbot online!"
 
 # Rota principal
 @app.route("/message", methods=["POST"])
