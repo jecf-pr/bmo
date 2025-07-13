@@ -1,64 +1,112 @@
 import os
-import time
+import pickle
 import requests
+import jwt
+import time
 from flask import Flask, request, jsonify
-import jwt  # pip install pyjwt
+from flask_cors import CORS
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Configurações
+TEXT_FILE = "conteudo"
+INDEX_FILE = "model/vectorizer.pkl"
+TEXTOS_FILE = "model/textos.pkl"
+
+# Botpress configs
+BOTPRESS_URL = "https://api.botpress.cloud/v1/chat/messages"
+BOT_ID = "acbf5504-742d-4241-93ca-816cf95ed2b9"
+CLIENT_ID = "3d43f9e1-cf6f-4a1c-b254-3d7906744d47"
+BOT_TOKEN = os.environ.get("BOTPRESS_TOKEN")  # crie a variável no Render!
 
 app = Flask(__name__)
-from flask_cors import CORS; CORS(app)
+CORS(app)
 
-BOT_TOKEN = "bp_pat_UXlgxksWgkEa2y52pgfIXjYTLXfm1jFltn3e"
-BOT_ID = "acbf5504-742d-4241-93ca-816cf95ed2b9"
-INTEGRATION_KEY = os.environ.get("BOTPRESS_ENCRYPTION_KEY", "secret_integration_key")
+# Indexar textos locais para buscar contexto
+def indexar_textos():
+    if not os.path.exists(TEXT_FILE):
+        raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
 
-HEADERS = {"Authorization": f"Bearer {BOT_TOKEN}", "Content-Type": "application/json"}
+    with open(TEXT_FILE, "r", encoding="utf-8") as f:
+        textos = [t.strip() for t in f.read().split("\n\n") if t.strip()]
 
-def sign_user_key(user_id):
-    return jwt.encode({"id": user_id, "iat": int(time.time())},
-                      INTEGRATION_KEY, algorithm="HS256")
+    vectorizer = TfidfVectorizer().fit(textos)
+    os.makedirs("model", exist_ok=True)
 
-def criar_conversa(user_id):
-    key = sign_user_key(user_id)
-    resp = requests.post(
-        f"https://chat.botpress.cloud/{BOT_ID}/conversations",
-        headers={**HEADERS, "x-user-key": key},
-        json={"integrationName": "webchat"}
-    )
-    resp.raise_for_status()
-    return resp.json()["conversationId"]
+    with open(INDEX_FILE, "wb") as f:
+        pickle.dump(vectorizer, f)
+    with open(TEXTOS_FILE, "wb") as f:
+        pickle.dump(textos, f)
 
-def enviar_msg(user_id, conversation_id, text):
-    key = sign_user_key(user_id)
-    resp = requests.post(
-        f"https://chat.botpress.cloud/{BOT_ID}/conversations/{conversation_id}/messages",
-        headers={**HEADERS, "x-user-key": key},
-        json={"type": "text", "text": text}
-    )
-    resp.raise_for_status()
-    # buscar histórico
-    r2 = requests.get(
-        f"https://chat.botpress.cloud/{BOT_ID}/conversations/{conversation_id}/messages",
-        headers={**HEADERS, "x-user-key": key}
-    )
-    return [m["payload"]["text"] for m in r2.json().get("messages", []) if m["type"] == "text"]
+    print("Indexação concluída.")
+
+def buscar_contexto(pergunta):
+    with open(INDEX_FILE, "rb") as f:
+        vectorizer = pickle.load(f)
+    with open(TEXTOS_FILE, "rb") as f:
+        textos = pickle.load(f)
+
+    pergunta_vec = vectorizer.transform([pergunta])
+    textos_vec = vectorizer.transform(textos)
+    scores = cosine_similarity(pergunta_vec, textos_vec)[0]
+    idx = scores.argmax()
+    return textos[idx]
+
+# Chamar o Botpress remoto com token e clientId
+def enviar_para_botpress(pergunta):
+    payload = {
+        "botId": BOT_ID,
+        "clientId": CLIENT_ID,
+        "messages": [{"type": "text", "content": pergunta}]
+    }
+
+    headers = {
+        "Authorization": f"Bearer {BOT_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        r = requests.post(BOTPRESS_URL, json=payload, headers=headers, timeout=30)
+        if r.status_code != 200:
+            return f"Erro HTTP {r.status_code}: {r.text}"
+
+        resposta = r.json()
+        messages = resposta.get("messages", [])
+        if messages:
+            return messages[-1]["content"]
+        else:
+            return "Erro: resposta vazia do Botpress."
+
+    except Exception as e:
+        return f"Erro ao acessar Botpress: {str(e)}"
+
+@app.route("/", methods=["GET"])
+def ping():
+    return "Chatbot online!"
 
 @app.route("/message", methods=["POST"])
 def message():
-    pergunta = request.form.get("message", "")
-    user = request.form.get("userId", "render-user")
-    if not pergunta:
-        return jsonify({"error": "Pergunta não enviada"}), 400
-
     try:
-        conv_id = criar_conversa(user)
-        respostas = enviar_msg(user, conv_id, pergunta)
-        return jsonify({"response": "\n".join(respostas)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        pergunta = request.form.get("message", "")
+        print("PERGUNTA:", pergunta)
 
-@app.route("/", methods=["GET"])
-def home(): return "✅ Chat Integration API OK"
+        if not pergunta:
+            return jsonify({"erro": "Pergunta não fornecida"}), 400
+
+        contexto = buscar_contexto(pergunta)
+        print("CONTEXTO:", contexto)
+
+        pergunta_com_contexto = f"{contexto}\n\n{pergunta}"
+        resposta = enviar_para_botpress(pergunta_com_contexto)
+        print("RESPOSTA:", resposta)
+
+        return jsonify({"response": resposta})
+    except Exception as e:
+        import traceback
+        print("ERRO AO PROCESSAR:", traceback.format_exc())
+        return jsonify({"response": f"Erro: {str(e)}"}), 500
 
 if __name__ == "__main__":
+    if not os.path.exists(INDEX_FILE):
+        indexar_textos()
     app.run(host="0.0.0.0", port=10000)
-
