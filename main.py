@@ -11,17 +11,16 @@ TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
+# Token via variável de ambiente no Render
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
 HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
-
-# Ou "flan-t5-small" se preferir
 
 HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
 }
 
 app = Flask(__name__)
-CORS(app)  # CORS liberado para todas origens por padrão
+CORS(app)
 
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
@@ -38,7 +37,7 @@ def indexar_textos():
     with open(TEXTOS_FILE, "wb") as f:
         pickle.dump(textos, f)
 
-    print("Indexação concluída.")
+    print("✅ Indexação concluída.")
 
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
@@ -61,6 +60,11 @@ def gerar_resposta(prompt):
         }
     }
 
+    # Debug
+    print("📡 Enviando para:", HUGGINGFACE_MODEL_URL)
+    print("🔐 Token presente?", "Sim" if HUGGINGFACE_API_TOKEN else "Não")
+    print("📤 Prompt:", prompt)
+
     try:
         response = requests.post(
             HUGGINGFACE_MODEL_URL,
@@ -68,6 +72,10 @@ def gerar_resposta(prompt):
             json=payload,
             timeout=30
         )
+
+        print("📥 Código HTTP:", response.status_code)
+        print("📥 Conteúdo bruto:", response.text)
+
         if response.status_code != 200:
             return f"Erro HTTP {response.status_code}: {response.text}"
 
@@ -76,19 +84,18 @@ def gerar_resposta(prompt):
         if isinstance(resposta, dict) and "error" in resposta:
             return f"Erro da Hugging Face: {resposta['error']}"
 
-        # Corrigindo a checagem da resposta gerada
         if isinstance(resposta, list) and len(resposta) > 0 and "generated_text" in resposta[0]:
-            # A resposta geralmente vem toda, então não precisa cortar pelo tamanho do prompt
             return resposta[0]["generated_text"].strip()
 
-        return "Erro: formato inesperado de resposta"
+        return "⚠️ Erro: formato inesperado de resposta."
 
     except Exception as e:
+        print("🔥 Exceção ao chamar HuggingFace:", str(e))
         return f"Erro de requisição: {str(e)}"
 
 @app.route("/", methods=["GET"])
 def ping():
-    return "Chatbot online!"
+    return "✅ Chatbot online!"
 
 @app.route("/message", methods=["POST"])
 def message():
@@ -102,6 +109,7 @@ def message():
         resposta = gerar_resposta(prompt)
         return jsonify({"response": resposta})
     except Exception as e:
+        print("❌ Erro no /message:", str(e))
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
 if __name__ == "__main__":
