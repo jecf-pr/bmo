@@ -102,7 +102,9 @@ def message():
 
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
+        print("Gerando índice...")
         indexar_textos()
+    else:
+        print("Índice já existe.")
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
