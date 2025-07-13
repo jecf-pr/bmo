@@ -6,12 +6,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import requests
 
-# Configurações e paths
+# === Configurações e paths ===
 TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
-# Token via variável de ambiente no Render
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
 HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 
@@ -19,9 +18,11 @@ HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
 }
 
+# === App Flask ===
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # Libera CORS para qualquer origem
 
+# === Indexar textos ===
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
@@ -39,6 +40,7 @@ def indexar_textos():
 
     print("✅ Indexação concluída.")
 
+# === Buscar contexto mais relevante ===
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
         vectorizer = pickle.load(f)
@@ -51,6 +53,7 @@ def buscar_contexto(pergunta):
     idx = scores.argmax()
     return textos[idx]
 
+# === Gerar resposta usando Hugging Face ===
 def gerar_resposta(prompt):
     payload = {
         "inputs": prompt,
@@ -60,10 +63,8 @@ def gerar_resposta(prompt):
         }
     }
 
-    # Debug
-    print("📡 Enviando para:", HUGGINGFACE_MODEL_URL)
-    print("🔐 Token presente?", "Sim" if HUGGINGFACE_API_TOKEN else "Não")
-    print("📤 Prompt:", prompt)
+    print("📡 ENVIANDO PARA:", HUGGINGFACE_MODEL_URL)
+    print("🔐 TOKEN (início):", HUGGINGFACE_API_TOKEN[:8] if HUGGINGFACE_API_TOKEN else "NENHUM TOKEN")
 
     try:
         response = requests.post(
@@ -73,8 +74,8 @@ def gerar_resposta(prompt):
             timeout=30
         )
 
-        print("📥 Código HTTP:", response.status_code)
-        print("📥 Conteúdo bruto:", response.text)
+        print("📥 HTTP STATUS:", response.status_code)
+        print("📥 RAW RESPONSE:", response.text[:500])  # imprime só parte da resposta
 
         if response.status_code != 200:
             return f"Erro HTTP {response.status_code}: {response.text}"
@@ -87,16 +88,18 @@ def gerar_resposta(prompt):
         if isinstance(resposta, list) and len(resposta) > 0 and "generated_text" in resposta[0]:
             return resposta[0]["generated_text"].strip()
 
-        return "⚠️ Erro: formato inesperado de resposta."
+        return "⚠️ Erro: formato inesperado de resposta"
 
     except Exception as e:
-        print("🔥 Exceção ao chamar HuggingFace:", str(e))
+        print("🔥 EXCEÇÃO:", str(e))
         return f"Erro de requisição: {str(e)}"
 
+# === Rota de teste ===
 @app.route("/", methods=["GET"])
 def ping():
     return "✅ Chatbot online!"
 
+# === Rota principal ===
 @app.route("/message", methods=["POST"])
 def message():
     pergunta = request.form.get("message", "")
@@ -109,9 +112,10 @@ def message():
         resposta = gerar_resposta(prompt)
         return jsonify({"response": resposta})
     except Exception as e:
-        print("❌ Erro no /message:", str(e))
+        print("❌ Erro ao processar:", str(e))
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
+# === Iniciar servidor ===
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
