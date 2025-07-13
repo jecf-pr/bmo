@@ -6,25 +6,22 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import requests
 
-# Caminhos e configs
+# Configurações e paths
 TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
-# Configurar seu modelo Hugging Face aqui
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
 HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/sshleifer/distilgpt2"
-  # ou flan-t5-small
+# Ou "flan-t5-small" se preferir
 
 HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
 }
 
-# Flask App
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # CORS liberado para todas origens por padrão
 
-# Indexação dos textos
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
@@ -42,7 +39,6 @@ def indexar_textos():
 
     print("Indexação concluída.")
 
-# Buscar trecho mais relevante
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
         vectorizer = pickle.load(f)
@@ -55,7 +51,6 @@ def buscar_contexto(pergunta):
     idx = scores.argmax()
     return textos[idx]
 
-# Gerar resposta via Hugging Face
 def gerar_resposta(prompt):
     payload = {
         "inputs": prompt,
@@ -80,18 +75,20 @@ def gerar_resposta(prompt):
         if isinstance(resposta, dict) and "error" in resposta:
             return f"Erro da Hugging Face: {resposta['error']}"
 
-        if isinstance(resposta, list) and "generated_text" in resposta[0]:
-            return resposta[0]["generated_text"][len(prompt):].strip()
+        # Corrigindo a checagem da resposta gerada
+        if isinstance(resposta, list) and len(resposta) > 0 and "generated_text" in resposta[0]:
+            # A resposta geralmente vem toda, então não precisa cortar pelo tamanho do prompt
+            return resposta[0]["generated_text"].strip()
 
         return "Erro: formato inesperado de resposta"
 
     except Exception as e:
         return f"Erro de requisição: {str(e)}"
+
 @app.route("/", methods=["GET"])
 def ping():
     return "Chatbot online!"
 
-# Rota principal
 @app.route("/message", methods=["POST"])
 def message():
     pergunta = request.form.get("message", "")
@@ -106,7 +103,6 @@ def message():
     except Exception as e:
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
-# Início do servidor
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
