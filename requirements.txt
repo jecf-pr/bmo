@@ -1,4 +1,5 @@
-flask
+Flask
 flask-cors
-scikit-learn
 requests
+scikit-learn
+PyJWT
