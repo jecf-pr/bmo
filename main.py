@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import requests
 import traceback
 
 app = Flask(__name__)
+CORS(app)  # ← Isso aqui resolve o CORS
 
 # Configurações do Botpress
 BOT_ID = 'acbf5504-742d-4241-93ca-816cf95ed2b9'
