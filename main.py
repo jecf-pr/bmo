@@ -13,7 +13,16 @@ def proxy_generate():
     try:
         # Repassa a requisição para sua IA local via ngrok
         resp = requests.post(f"{NGROK_URL}/generate", json=data)
-        return jsonify(resp.json()), resp.status_code
+
+try:
+    return jsonify(resp.json()), resp.status_code
+except Exception:
+    return jsonify({
+        "error": "Resposta inválida da IA local.",
+        "status_code": resp.status_code,
+        "conteudo_bruto": resp.text
+    }), 500
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
