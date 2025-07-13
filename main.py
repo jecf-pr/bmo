@@ -6,20 +6,24 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import requests
 
+# Caminhos e configs
 TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
+# Configurar seu modelo Hugging Face aqui
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
-HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/distilgpt2"  # ou flan-t5
+HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/distilgpt2"  # ou flan-t5-small
 
 HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
 }
 
+# Flask App
 app = Flask(__name__)
 CORS(app)
 
+# Indexação dos textos
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
@@ -37,6 +41,7 @@ def indexar_textos():
 
     print("Indexação concluída.")
 
+# Buscar trecho mais relevante
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
         vectorizer = pickle.load(f)
@@ -47,9 +52,9 @@ def buscar_contexto(pergunta):
     textos_vec = vectorizer.transform(textos)
     scores = cosine_similarity(pergunta_vec, textos_vec)[0]
     idx = scores.argmax()
-
     return textos[idx]
 
+# Gerar resposta via Hugging Face
 def gerar_resposta(prompt):
     payload = {
         "inputs": prompt,
@@ -59,14 +64,30 @@ def gerar_resposta(prompt):
         }
     }
 
-    response = requests.post(HUGGINGFACE_MODEL_URL, headers=HEADERS, json=payload)
-    resposta = response.json()
+    try:
+        response = requests.post(
+            HUGGINGFACE_MODEL_URL,
+            headers=HEADERS,
+            json=payload,
+            timeout=30
+        )
+        if response.status_code != 200:
+            return f"Erro HTTP {response.status_code}: {response.text}"
 
-    if isinstance(resposta, dict) and "error" in resposta:
-        return f"Erro da Hugging Face: {resposta['error']}"
-    
-    return resposta[0]["generated_text"][len(prompt):].strip()
+        resposta = response.json()
 
+        if isinstance(resposta, dict) and "error" in resposta:
+            return f"Erro da Hugging Face: {resposta['error']}"
+
+        if isinstance(resposta, list) and "generated_text" in resposta[0]:
+            return resposta[0]["generated_text"][len(prompt):].strip()
+
+        return "Erro: formato inesperado de resposta"
+
+    except Exception as e:
+        return f"Erro de requisição: {str(e)}"
+
+# Rota principal
 @app.route("/message", methods=["POST"])
 def message():
     pergunta = request.form.get("message", "")
@@ -81,6 +102,7 @@ def message():
     except Exception as e:
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
+# Início do servidor
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
