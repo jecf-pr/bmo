@@ -1,85 +1,59 @@
-import os
-import pickle
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import requests
-
-TEXT_FILE = "conteudo"
-INDEX_FILE = "model/vectorizer.pkl"
-TEXTOS_FILE = "model/textos.pkl"
-
-HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
-HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
-
-HEADERS = {
-    "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
-}
 
 app = Flask(__name__)
 CORS(app)
 
-def indexar_textos():
-    if not os.path.exists(TEXT_FILE):
-        raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
+# CONFIGURAÇÕES DO BOTPRESS
+BOTPRESS_URL = "https://api.botpress.cloud/v1/chat/messages"
+BOT_ID = "acbf5504-742d-4241-93ca-816cf95ed2b9"
+CLIENT_ID = "3d43f9e1-cf6f-4a1c-b254-3d7906744d47"
+BOT_TOKEN = "bp_pat_UXlgxksWgkEa2y52pgfIXjYTLXfm1jFltn3e"
+USER_ID = "usuario-render-testando"  # Pode gerar ID dinâmico se quiser
 
-    with open(TEXT_FILE, "r", encoding="utf-8") as f:
-        textos = [t.strip() for t in f.read().split("\n\n") if t.strip()]
+# ENVIA A MENSAGEM PARA O BOTPRESS
+def enviar_para_botpress(mensagem):
+    headers = {
+        "Authorization": f"Bearer {BOT_TOKEN}",
+        "Content-Type": "application/json"
+    }
 
-    vectorizer = TfidfVectorizer().fit(textos)
-    os.makedirs("model", exist_ok=True)
-    with open(INDEX_FILE, "wb") as f:
-        pickle.dump(vectorizer, f)
-    with open(TEXTOS_FILE, "wb") as f:
-        pickle.dump(textos, f)
-
-def buscar_contexto(pergunta):
-    with open(INDEX_FILE, "rb") as f:
-        vectorizer = pickle.load(f)
-    with open(TEXTOS_FILE, "rb") as f:
-        textos = pickle.load(f)
-
-    pergunta_vec = vectorizer.transform([pergunta])
-    textos_vec = vectorizer.transform(textos)
-    scores = cosine_similarity(pergunta_vec, textos_vec)[0]
-    idx = scores.argmax()
-    return textos[idx]
-
-def gerar_resposta(prompt):
     payload = {
-        "inputs": prompt
+        "botId": BOT_ID,
+        "clientId": CLIENT_ID,
+        "userId": USER_ID,
+        "type": "text",
+        "text": mensagem
     }
 
     try:
-        response = requests.post(HUGGINGFACE_MODEL_URL, headers=HEADERS, json=payload, timeout=30)
-        if response.status_code != 200:
-            return f"Erro HTTP {response.status_code}: {response.text}"
-
+        response = requests.post(BOTPRESS_URL, json=payload, headers=headers)
         data = response.json()
-        return data[0]["generated_text"].strip() if isinstance(data, list) else str(data)
+
+        # Verifica se a resposta veio corretamente
+        mensagens = data.get("messages", [])
+        textos = [m["payload"]["text"] for m in mensagens if m.get("type") == "text"]
+
+        return "\n".join(textos) if textos else "Nenhuma resposta recebida."
     except Exception as e:
-        return f"Erro: {str(e)}"
+        return f"Erro na requisição: {e}"
 
-@app.route("/", methods=["GET"])
-def ping():
-    return "🟢 Chatbot online"
-
+# ENDPOINT PRINCIPAL
 @app.route("/message", methods=["POST"])
 def message():
     pergunta = request.form.get("message", "")
     if not pergunta:
-        return jsonify({"erro": "Pergunta não fornecida"}), 400
-    try:
-        contexto = buscar_contexto(pergunta)
-        prompt = f"{contexto}\n\nPergunta: {pergunta}\nResposta:"
-        resposta = gerar_resposta(prompt)
-        return jsonify({"response": resposta})
-    except Exception as e:
-        return jsonify({"response": f"Erro: {str(e)}"}), 500
+        return jsonify({"erro": "Mensagem não enviada"}), 400
 
+    resposta = enviar_para_botpress(pergunta)
+    return jsonify({"response": resposta})
+
+# TESTE DE VIDA
+@app.route("/", methods=["GET"])
+def ping():
+    return "API do chatbot está online!"
+
+# INICIA SERVIDOR
 if __name__ == "__main__":
-    if not os.path.exists(INDEX_FILE):
-        indexar_textos()
     app.run(host="0.0.0.0", port=10000)
-
