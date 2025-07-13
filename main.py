@@ -36,15 +36,24 @@ def enviar_mensagem(conversation_id, mensagem):
         print("Enviar msg status:", response.status_code)
         print("Enviar msg body:", response.text)
         if response.status_code != 200:
-            return None
+            print("Falha ao enviar mensagem para o bot.")
+            return "Erro ao enviar mensagem ao bot."
 
         resposta = requests.get(url, headers=HEADERS)
+        print("Resposta get mensagens status:", resposta.status_code)
+        print("Resposta get mensagens body:", resposta.text)
+
         mensagens = resposta.json().get('messages', [])
         respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
-        return respostas[-1] if respostas else "Sem resposta do bot."
+
+        if respostas:
+            return respostas[-1]
+        else:
+            return "Bot não respondeu."
+
     except Exception as e:
         print("Erro enviar mensagem:", e)
-        return None
+        return "Erro interno no envio."
 
 @app.route('/')
 def index():
