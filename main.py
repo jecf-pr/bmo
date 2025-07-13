@@ -1,69 +1,70 @@
-import os
-import uuid
-import time
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 import requests
 
-# Dados fixos do bot
-BOT_ID = "acbf5504-742d-4241-93ca-816cf95ed2b9"
-BOTPRESS_API_BASE = f"https://api.botpress.cloud/v1/bots/{BOT_ID}"
-BOT_TOKEN = "bp_pat_UXlgxksWgkEa2y52pgfIXjYTLXfm1jFltn3e"
+app = Flask(__name__)
+
+# Configurações do Botpress
+BOT_ID = 'acbf5504-742d-4241-93ca-816cf95ed2b9'
+BOT_TOKEN = 'bp_pat_UXlgxksWgkEa2y52pgfIXjYTLXfm1jFltn3e'
+BOTPRESS_API_URL = f'https://api.botpress.cloud/v1/bots/{BOT_ID}/conversations'
 
 HEADERS = {
-    "Authorization": f"Bearer {BOT_TOKEN}",
-    "Content-Type": "application/json"
+    'Authorization': f'Bearer {BOT_TOKEN}',
+    'Content-Type': 'application/json'
 }
 
-app = Flask(__name__)
-CORS(app)
+# Criar uma conversa nova (uma vez por usuário, ou sempre que quiser reiniciar)
+def criar_conversa():
+    response = requests.post(BOTPRESS_API_URL, headers=HEADERS)
+    if response.status_code == 200:
+        return response.json()['id']
+    else:
+        print("Erro ao criar conversa:", response.text)
+        return None
 
-@app.route("/", methods=["GET"])
-def ping():
-    return "Servidor online!"
+# Enviar mensagem e obter resposta
+def enviar_mensagem(conversation_id, mensagem):
+    url = f'{BOTPRESS_API_URL}/{conversation_id}/messages'
+    payload = {
+        "type": "text",
+        "text": mensagem
+    }
 
-@app.route("/message", methods=["POST"])
-def message():
-    msg = request.form.get("message", "")
-    if not msg:
-        return jsonify({"response": "Mensagem não fornecida"}), 400
+    response = requests.post(url, headers=HEADERS, json=payload)
+    if response.status_code != 200:
+        print("Erro ao enviar mensagem:", response.text)
+        return None
 
-    try:
-        user_id = "user-123"
-        conv_id = str(uuid.uuid4())  # conversa nova por requisição
+    # Aguardar resposta (simples polling)
+    resposta = requests.get(url, headers=HEADERS)
+    mensagens = resposta.json()['messages']
+    respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
 
-        # Envia a mensagem
-        payload = {
-            "userId": user_id,
-            "type": "text",
-            "text": msg,
-            "conversationId": conv_id,
-            "tags": [],
-            "payload": {}
-        }
+    return respostas[-1] if respostas else "Sem resposta."
 
-        send_url = f"{BOTPRESS_API_BASE}/conversations"
-        send_res = requests.post(send_url, headers=HEADERS, json=payload)
-        if send_res.status_code != 200:
-            return jsonify({"response": f"Erro ao enviar: {send_res.text}"}), send_res.status_code
+@app.route('/mensagem', methods=['POST'])
+def mensagem():
+    data = request.get_json()
+    texto_usuario = data.get('mensagem')
 
-        # Aguarda um tempo para a resposta estar pronta (ajuste se precisar)
-        time.sleep(2)
+    if not texto_usuario:
+        return jsonify({'erro': 'Mensagem ausente'}), 400
 
-        # Busca as mensagens da conversa
-        get_url = f"{BOTPRESS_API_BASE}/conversations/{conv_id}/messages"
-        get_res = requests.get(get_url, headers=HEADERS)
-        if get_res.status_code != 200:
-            return jsonify({"response": f"Erro ao buscar resposta: {get_res.text}"}), get_res.status_code
+    # Cria nova conversa a cada mensagem (pode ser modificado para manter uma por usuário)
+    conversa_id = criar_conversa()
+    if not conversa_id:
+        return jsonify({'erro': 'Erro ao criar conversa'}), 500
 
-        mensagens = get_res.json().get("messages", [])
-        respostas = [m["payload"]["text"] for m in mensagens if m.get("role") == "bot"]
-        resposta_final = respostas[-1] if respostas else "Sem resposta do bot."
+    resposta_bot = enviar_mensagem(conversa_id, texto_usuario)
+    if not resposta_bot:
+        return jsonify({'erro': 'Erro ao obter resposta'}), 500
 
-        return jsonify({"response": resposta_final})
+    return jsonify({'resposta': resposta_bot})
 
-    except Exception as e:
-        return jsonify({"response": f"Erro: {str(e)}"}), 500
+@app.route('/', methods=['GET'])
+def index():
+    return "Servidor do Botpress rodando!"
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+if __name__ == '__main__':
+    app.run(debug=True)
+
