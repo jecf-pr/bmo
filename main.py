@@ -55,6 +55,8 @@ def buscar_contexto(pergunta):
 
 # === Gerar resposta usando Hugging Face ===
 def gerar_resposta(prompt):
+    print("➡️ PROMPT ENVIADO:", prompt)
+
     payload = {
         "inputs": prompt,
         "parameters": {
@@ -62,9 +64,6 @@ def gerar_resposta(prompt):
             "temperature": 0.7
         }
     }
-
-    print("📡 ENVIANDO PARA:", HUGGINGFACE_MODEL_URL)
-    print("🔐 TOKEN (início):", HUGGINGFACE_API_TOKEN[:8] if HUGGINGFACE_API_TOKEN else "NENHUM TOKEN")
 
     try:
         response = requests.post(
@@ -74,27 +73,27 @@ def gerar_resposta(prompt):
             timeout=30
         )
 
-        print("📥 HTTP STATUS:", response.status_code)
-        print("📥 RAW RESPONSE:", response.text[:500])  # imprime só parte da resposta
+        print("🔁 STATUS:", response.status_code)
+        print("🔁 BODY:", response.text[:500])  # Limita o print a 500 caracteres
 
         if response.status_code != 200:
-            return f"Erro HTTP {response.status_code}: {response.text}"
+            return f"❌ Erro HTTP {response.status_code}: {response.text}"
 
         resposta = response.json()
 
         if isinstance(resposta, dict) and "error" in resposta:
-            return f"Erro da Hugging Face: {resposta['error']}"
+            return f"❌ Erro HuggingFace: {resposta['error']}"
 
-        if isinstance(resposta, list) and len(resposta) > 0 and "generated_text" in resposta[0]:
-            return resposta[0]["generated_text"].strip()
+        if isinstance(resposta, list):
+            return resposta[0].get("generated_text", "❌ Sem 'generated_text'").strip()
 
-        return "⚠️ Erro: formato inesperado de resposta"
+        return "⚠️ Resposta com formato inesperado"
 
     except Exception as e:
         print("🔥 EXCEÇÃO:", str(e))
-        return f"Erro de requisição: {str(e)}"
+        return f"Erro: {str(e)}"
 
-# === Rota de teste ===
+# === Rota de verificação ===
 @app.route("/", methods=["GET"])
 def ping():
     return "✅ Chatbot online!"
@@ -120,3 +119,4 @@ if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
     app.run(host="0.0.0.0", port=10000)
+
