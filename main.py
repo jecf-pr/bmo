@@ -19,11 +19,9 @@ HEADERS = {
     "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
 }
 
-# App Flask
 app = Flask(__name__)
 CORS(app)
 
-# Indexar os textos do arquivo
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
@@ -41,7 +39,6 @@ def indexar_textos():
 
     print("Indexação concluída.")
 
-# Buscar trecho mais relevante
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
         vectorizer = pickle.load(f)
@@ -54,7 +51,6 @@ def buscar_contexto(pergunta):
     idx = scores.argmax()
     return textos[idx]
 
-# Chamar Hugging Face
 def gerar_resposta(prompt):
     payload = {
         "inputs": prompt,
@@ -76,7 +72,6 @@ def gerar_resposta(prompt):
 
         resposta = response.json()
 
-        # FLAN-T5 retorna {'generated_text': ...} dentro de uma lista
         if isinstance(resposta, list) and "generated_text" in resposta[0]:
             return resposta[0]["generated_text"].strip()
 
@@ -84,8 +79,7 @@ def gerar_resposta(prompt):
 
     except Exception as e:
         return f"Erro de requisição: {str(e)}"
-        
-# Rota principal da IA
+
 @app.route("/", methods=["POST"])
 def message():
     pergunta = ""
@@ -106,18 +100,9 @@ def message():
     except Exception as e:
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
-
-    try:
-        contexto = buscar_contexto(pergunta)
-        prompt = f"{contexto}\n\nPergunta: {pergunta}\nResposta:"
-        resposta = gerar_resposta(prompt)
-        return jsonify({"response": resposta})
-    except Exception as e:
-        return jsonify({"response": f"Erro: {str(e)}"}), 500
-
-# Iniciar app
 if __name__ == "__main__":
     if not os.path.exists(INDEX_FILE):
         indexar_textos()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
