@@ -3,6 +3,7 @@ from flask_cors import CORS
 import requests
 import traceback
 import time
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -33,22 +34,32 @@ def enviar_mensagem(conversation_id, mensagem):
         url = f'{BOTPRESS_API_URL}/{conversation_id}/messages'
         payload = {"type": "text", "text": mensagem}
 
-        # Envia mensagem
+        # Envia mensagem para o bot
         response = requests.post(url, headers=HEADERS, json=payload)
         print("Enviar msg status:", response.status_code)
         print("Enviar msg body:", response.text)
         if response.status_code != 200:
-            print("Falha ao enviar mensagem para o bot.")
             return "Erro ao enviar mensagem ao bot."
 
-        # Polling para esperar a resposta do bot
-        for _ in range(5):  # tenta até 5 vezes
-            time.sleep(1)  # espera 1 segundo
+        # Espera até o bot responder (polling)
+        for tentativa in range(5):
+            time.sleep(1)
             resposta = requests.get(url, headers=HEADERS)
-            print("Resposta get mensagens status:", resposta.status_code)
+            print(f"Tentativa {tentativa+1}: status {resposta.status_code}")
             print("Resposta get mensagens body:", resposta.text)
+
             mensagens = resposta.json().get('messages', [])
-            respostas = [msg['payload']['text'] for msg in mensagens if msg['role'] == 'bot']
+            print("Mensagens recebidas:", mensagens)
+
+            respostas = []
+            for msg in mensagens:
+                if msg.get('role') == 'bot':
+                    payload = msg.get('payload', {})
+                    if 'text' in payload:
+                        respostas.append(payload['text'])
+                    else:
+                        print("Payload inesperado:", payload)
+
             if respostas:
                 return respostas[-1]
 
@@ -56,6 +67,7 @@ def enviar_mensagem(conversation_id, mensagem):
 
     except Exception as e:
         print("Erro enviar mensagem:", e)
+        traceback.print_exc()
         return "Erro interno no envio."
 
 @app.route('/')
@@ -69,7 +81,7 @@ def mensagem():
         print("Mensagem recebida:", texto_usuario)
 
         if not texto_usuario:
-            return jsonify({'erro': 'Campo "message" não enviado.'}), 400
+            return jsonify({'erro': 'Campo \"message\" não enviado.'}), 400
 
         conversa_id = criar_conversa()
         if not conversa_id:
@@ -87,6 +99,5 @@ def mensagem():
         return jsonify({'erro': 'Erro interno no servidor', 'detalhes': str(e)}), 500
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=True)
