@@ -12,7 +12,8 @@ INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
 
 HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
-HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/sshleifer/distilgpt2"
+HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
+
 # Ou "flan-t5-small" se preferir
 
 HEADERS = {
