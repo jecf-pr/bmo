@@ -1,103 +1,111 @@
+import os
+import pickle
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import requests
-import traceback
-import time
-import os
 
+# === CONFIG ===
+TEXT_FILE = "conteudo"
+INDEX_FILE = "model/vectorizer.pkl"
+TEXTOS_FILE = "model/textos.pkl"
+
+HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
+HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"  # ou outro modelo
+
+HEADERS = {
+    "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
+}
+
+# === APP ===
 app = Flask(__name__)
 CORS(app)
 
-BOT_ID = 'acbf5504-742d-4241-93ca-816cf95ed2b9'
-BOT_TOKEN = 'bp_pat_UXlgxksWgkEa2y52pgfIXjYTLXfm1jFltn3e'
-BOTPRESS_API_URL = f'https://api.botpress.cloud/v1/bots/{BOT_ID}/conversations'
+# === INDEXAR TEXTOS ===
+def indexar_textos():
+    if not os.path.exists(TEXT_FILE):
+        raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
 
-HEADERS = {
-    'Authorization': f'Bearer {BOT_TOKEN}',
-    'Content-Type': 'application/json'
-}
+    with open(TEXT_FILE, "r", encoding="utf-8") as f:
+        textos = [t.strip() for t in f.read().split("\n\n") if t.strip()]
 
-def criar_conversa():
+    vectorizer = TfidfVectorizer().fit(textos)
+    os.makedirs("model", exist_ok=True)
+
+    with open(INDEX_FILE, "wb") as f:
+        pickle.dump(vectorizer, f)
+    with open(TEXTOS_FILE, "wb") as f:
+        pickle.dump(textos, f)
+
+    print("Indexação concluída.")
+
+# === BUSCAR CONTEXTO ===
+def buscar_contexto(pergunta):
+    with open(INDEX_FILE, "rb") as f:
+        vectorizer = pickle.load(f)
+    with open(TEXTOS_FILE, "rb") as f:
+        textos = pickle.load(f)
+
+    pergunta_vec = vectorizer.transform([pergunta])
+    textos_vec = vectorizer.transform(textos)
+    scores = cosine_similarity(pergunta_vec, textos_vec)[0]
+    idx = scores.argmax()
+    return textos[idx]
+
+# === GERAR RESPOSTA ===
+def gerar_resposta(prompt):
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 150,
+            "temperature": 0.7
+        }
+    }
+
     try:
-        response = requests.post(BOTPRESS_API_URL, headers=HEADERS)
-        print("Criar conversa status:", response.status_code)
-        print("Criar conversa body:", response.text)
-        if response.status_code == 200:
-            return response.json()['id']
-        return None
-    except Exception as e:
-        print("Erro criar conversa:", e)
-        return None
+        response = requests.post(HUGGINGFACE_MODEL_URL, headers=HEADERS, json=payload, timeout=30)
 
-def enviar_mensagem(conversation_id, mensagem):
-    try:
-        url = f'{BOTPRESS_API_URL}/{conversation_id}/messages'
-        payload = {"type": "text", "text": mensagem}
-
-        # Envia mensagem para o bot
-        response = requests.post(url, headers=HEADERS, json=payload)
-        print("Enviar msg status:", response.status_code)
-        print("Enviar msg body:", response.text)
         if response.status_code != 200:
-            return "Erro ao enviar mensagem ao bot."
+            return f"Erro HTTP {response.status_code}: {response.text}"
 
-        # Espera até o bot responder (polling)
-        for tentativa in range(5):
-            time.sleep(1)
-            resposta = requests.get(url, headers=HEADERS)
-            print(f"Tentativa {tentativa+1}: status {resposta.status_code}")
-            print("Resposta get mensagens body:", resposta.text)
+        data = response.json()
 
-            mensagens = resposta.json().get('messages', [])
-            print("Mensagens recebidas:", mensagens)
+        if isinstance(data, dict) and "error" in data:
+            return f"Erro da Hugging Face: {data['error']}"
 
-            respostas = []
-            for msg in mensagens:
-                if msg.get('role') == 'bot':
-                    payload = msg.get('payload', {})
-                    if 'text' in payload:
-                        respostas.append(payload['text'])
-                    else:
-                        print("Payload inesperado:", payload)
+        if isinstance(data, list) and len(data) > 0:
+            if "generated_text" in data[0]:
+                return data[0]["generated_text"].strip()
+            elif "generated_text" in data[-1]:
+                return data[-1]["generated_text"].strip()
 
-            if respostas:
-                return respostas[-1]
-
-        return "Bot não respondeu após esperar."
+        return "Erro: Resposta inesperada da Hugging Face."
 
     except Exception as e:
-        print("Erro enviar mensagem:", e)
-        traceback.print_exc()
-        return "Erro interno no envio."
+        return f"Erro de requisição: {str(e)}"
 
-@app.route('/')
-def index():
-    return "Servidor rodando!"
+# === ROTA PRINCIPAL ===
+@app.route("/message", methods=["POST"])
+def message():
+    pergunta = request.form.get("message", "")
+    if not pergunta:
+        return jsonify({"erro": "Pergunta não fornecida"}), 400
 
-@app.route('/mensagem', methods=['POST'])
-def mensagem():
     try:
-        texto_usuario = request.form.get('message')
-        print("Mensagem recebida:", texto_usuario)
-
-        if not texto_usuario:
-            return jsonify({'erro': 'Campo \"message\" não enviado.'}), 400
-
-        conversa_id = criar_conversa()
-        if not conversa_id:
-            return jsonify({'erro': 'Erro ao criar conversa.'}), 500
-
-        resposta_bot = enviar_mensagem(conversa_id, texto_usuario)
-        if not resposta_bot:
-            return jsonify({'erro': 'Erro ao obter resposta do bot.'}), 500
-
-        return jsonify({'response': resposta_bot})
-
+        contexto = buscar_contexto(pergunta)
+        prompt = f"Contexto: {contexto}\n\nPergunta: {pergunta}\nResposta:"
+        resposta = gerar_resposta(prompt)
+        return jsonify({"response": resposta})
     except Exception as e:
-        print("Erro interno:")
-        traceback.print_exc()
-        return jsonify({'erro': 'Erro interno no servidor', 'detalhes': str(e)}), 500
+        return jsonify({"response": f"Erro: {str(e)}"}), 500
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+@app.route("/", methods=["GET"])
+def ping():
+    return "Servidor Hugging Face ativo!"
+
+# === EXECUÇÃO ===
+if __name__ == "__main__":
+    if not os.path.exists(INDEX_FILE):
+        indexar_textos()
+    app.run(host="0.0.0.0", port=10000)
