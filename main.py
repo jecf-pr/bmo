@@ -4,33 +4,33 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import requests
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
 
-# Arquivos e variáveis
+# Caminhos dos arquivos
 TEXT_FILE = "conteudo"
 INDEX_FILE = "model/vectorizer.pkl"
 TEXTOS_FILE = "model/textos.pkl"
-HUGGINGFACE_API_TOKEN = os.environ.get("HF_API_KEY")
-HUGGINGFACE_MODEL_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
 
+# Carregar modelo localmente
+MODEL_NAME = "google/flan-t5-base"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
 
-HEADERS = {
-    "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}"
-}
-
-# Inicializa Flask
+# Criar app Flask
 app = Flask(__name__)
 CORS(app)
 
-# Indexa os textos, cria a pasta model/ e os arquivos .pkl
+# Garantir pasta model
+os.makedirs("model", exist_ok=True)
+
+# Indexar os textos do arquivo
 def indexar_textos():
     if not os.path.exists(TEXT_FILE):
         raise FileNotFoundError("Arquivo de conteúdo não encontrado.")
 
     with open(TEXT_FILE, "r", encoding="utf-8") as f:
         textos = [t.strip() for t in f.read().split("\n\n") if t.strip()]
-
-    os.makedirs("model", exist_ok=True)
 
     vectorizer = TfidfVectorizer().fit(textos)
 
@@ -41,7 +41,7 @@ def indexar_textos():
 
     print("Indexação concluída.")
 
-# Busca o trecho mais relevante com base na pergunta
+# Buscar trecho mais relevante
 def buscar_contexto(pergunta):
     with open(INDEX_FILE, "rb") as f:
         vectorizer = pickle.load(f)
@@ -54,41 +54,17 @@ def buscar_contexto(pergunta):
     idx = scores.argmax()
     return textos[idx]
 
-# Chama a API da Hugging Face
+# Gerar resposta com modelo local
 def gerar_resposta(prompt):
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 150, "temperature": 0.7}
-    }
+    input_ids = tokenizer(prompt, return_tensors="pt").input_ids
+    output_ids = model.generate(input_ids, max_new_tokens=150)
+    resposta = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+    return resposta
 
-    try:
-        response = requests.post(
-            HUGGINGFACE_MODEL_URL,
-            headers=HEADERS,
-            json=payload,
-            timeout=30
-        )
-        if response.status_code != 200:
-            return f"Erro HTTP {response.status_code}: {response.text}"
-
-        resposta = response.json()
-        if isinstance(resposta, list) and "generated_text" in resposta[0]:
-            return resposta[0]["generated_text"].strip()
-
-        return "Erro: formato inesperado de resposta"
-    except Exception as e:
-        return f"Erro de requisição: {str(e)}"
-
-# Rota principal
+# Rota da IA
 @app.route("/", methods=["POST"])
 def message():
-    pergunta = ""
-    if request.is_json:
-        data = request.get_json()
-        pergunta = data.get("message", "")
-    else:
-        pergunta = request.form.get("message", "")
-
+    pergunta = request.form.get("message", "")
     if not pergunta:
         return jsonify({"erro": "Pergunta não fornecida"}), 400
 
@@ -100,9 +76,8 @@ def message():
     except Exception as e:
         return jsonify({"response": f"Erro: {str(e)}"}), 500
 
-# Gera os arquivos no início do app, mesmo com gunicorn
-if not os.path.exists(INDEX_FILE):
-    try:
+# Iniciar app
+if __name__ == "__main__":
+    if not os.path.exists(INDEX_FILE):
         indexar_textos()
-    except Exception as e:
-        print(f"[ERRO] Falha ao indexar textos: {str(e)}")
+    app.run(host="0.0.0.0", port=10000)
