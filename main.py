@@ -88,9 +88,24 @@ def gerar_resposta(prompt):
 # Rota principal da IA
 @app.route("/", methods=["POST"])
 def message():
-    pergunta = request.form.get("message", "")
+    pergunta = ""
+    if request.is_json:
+        data = request.get_json()
+        pergunta = data.get("message", "")
+    else:
+        pergunta = request.form.get("message", "")
+
     if not pergunta:
         return jsonify({"erro": "Pergunta não fornecida"}), 400
+
+    try:
+        contexto = buscar_contexto(pergunta)
+        prompt = f"{contexto}\n\nPergunta: {pergunta}\nResposta:"
+        resposta = gerar_resposta(prompt)
+        return jsonify({"response": resposta})
+    except Exception as e:
+        return jsonify({"response": f"Erro: {str(e)}"}), 500
+
 
     try:
         contexto = buscar_contexto(pergunta)
