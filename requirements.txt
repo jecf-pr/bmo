@@ -1,5 +1,3 @@
 flask
+requests
 flask-cors
-scikit-learn
-transformers
-torch
