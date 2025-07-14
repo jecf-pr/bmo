@@ -7,7 +7,7 @@ app = Flask(__name__)
 # Sua URL do ngrok
 NGROK_URL = "https://5cb66bd166c9.ngrok-free.app"
 
-@app.route("/generate", methods=["POST"])
+@app.route("/message", methods=["POST"])
 def proxy_generate():
     data = request.json
     try:
